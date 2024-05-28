@@ -1,0 +1,148 @@
+---
+title: "Final_Project"
+author: "Liangying Liu"
+date: "2024-05-01"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+
+```{r warning = FALSE, message = FALSE}
+
+# written by Liangying, 4/28/2024
+
+library(caret)
+library(ada)
+
+
+error <- function(y, y_pred, w_i)
+{
+  return(sum(w_i * (y != y_pred)) / sum(w_i))
+}
+
+
+
+Alpha <- function(error)
+{
+  if( (1-error)==1 | error==1 ){
+    error=(1-error)*0.0001+error*.9999
+  }
+  return(log((1 - error) / error))
+}
+
+weights_update <- function(w_i, alpha, y, y_pred)
+{
+  return(w_i * exp(alpha * (y != y_pred)))
+  #return(w_i * exp(-1 * alpha * as.numeric(as.character(y)) * as.numeric(as.character(y_pred))))
+}
+
+
+
+Adaboost_fit <- function(X, y, M)
+{
+  training_error = numeric(M)
+  alpha = numeric(M)
+  dt_M = vector("list", M)
+  
+  # initialize weights
+  w_i = rep(1/length(y), length(y))
+  
+  for (m in 1:M)
+  {
+    dt_m <- rpart::rpart(y ~ ., data = X, weights = w_i, 
+                         control = rpart::rpart.control(maxdepth=1,cp=-1,minsplit=0,xval=0))
+    
+    dt_M[[m]] = dt_m
+    
+    y_pred = predict(dt_m, newdata = X, type = "class")
+    
+    training_error[m] = error(y, y_pred, w_i)
+    
+    alpha[m] = Alpha(training_error[m])
+    
+    w_i = weights_update(w_i, alpha[m], y, y_pred)
+    
+  }
+  
+  return(list(training_error = training_error, alpha = alpha,  dt_M = dt_M))
+}
+
+
+
+Adaboost_pred <- function(X, model)
+{
+  weak_pred = matrix(0, nrow = nrow(X), ncol = length(model$alpha))
+  y_pred_iter = matrix(0, nrow = nrow(X), ncol = length(model$alpha))
+  
+  for(m in 1:length(model$alpha))
+  {
+    y_pred_m = predict(model$dt_M[[m]], newdata = X, type = "class") 
+    weak_pred[, m] = as.numeric(as.character(y_pred_m)) * model$alpha[m]
+    
+    y_pred_iter[, m] = sign(rowSums(weak_pred))
+  }
+  
+  y_pred = sign(rowSums(weak_pred))
+  
+  return(list(y_pred_iter = y_pred_iter, y_pred = y_pred))
+} 
+  
+  
+  
+df_training = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/banana_train.csv")
+df_test = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/banana_test.csv")
+
+table(df_training$Quality)  
+print("data is balanced")
+
+df_training$Quality <- ifelse(df_training$Quality == "Good", 1, -1)
+df_test$Quality <- ifelse(df_test$Quality == "Good", 1, -1)
+
+df_training$Quality <- factor(df_training$Quality)
+df_test$Quality <- factor(df_test$Quality)
+
+x_train = df_training[, -ncol(df_training)]
+y_train = df_training$Quality
+
+x_test = df_test[, -ncol(df_test)]
+y_test = df_test$Quality
+
+model <- Adaboost_fit(x_train, y_train, M = 500)
+
+# Predict on test set
+test_pred <- Adaboost_pred(x_test, model)
+y_pred <- test_pred$y_pred
+y_pred_iter <- test_pred$y_pred_iter
+
+
+adaboost_CFM = confusionMatrix(data = as.factor(y_pred), reference = as.factor(y_test))
+cat('Adaboosting Test Accuracy:', adaboost_CFM$overall['Accuracy'])
+
+
+test_error = apply(y_pred_iter, 2 , 
+                   function(c)
+                  {
+                    test_error = mean(c != y_test)
+                   })
+
+
+plot(1:length(test_error), test_error, type = "l", col = "red", lwd = 1.2, xlab = "Number of Stumps", ylab = "Error", main = "Test Errors")
+
+
+model2 <- ada(Quality ~ .,  data = df_training, iter = 500, 
+              bag.frac = 0,
+              control=rpart.control(maxdepth=1,cp=-1,minsplit=0,xval=0))
+pred <- predict(model2, newdata = x_test)
+
+adat_CFM = confusionMatrix(data = as.factor(pred), reference = as.factor(y_test))
+cat('Adaboosting Test Accuracy:', adat_CFM$overall['Accuracy'])
+
+
+
+```

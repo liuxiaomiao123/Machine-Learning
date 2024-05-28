@@ -1,0 +1,292 @@
+---
+title: "Assignment2"
+author: "Liangying Liu"
+date: "2024-02-09"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+# Part 1. Standard Regression Model (20 pts)
+
+For this part of the homework, we ignore the (potential) serial correlation in the data and analyze the data as if they represent 180 independent observations on 18 subjects.
+Compute linear regression coefficients for all 18 subjects and report the sample mean and the sample standard deviation of the intercepts and slopes. In other words, for each subject you imagine that the relationship between mean reaction time and days of sleep deprivation is given by a simple linear regression. The reaction time 𝑅𝑖j for subject 𝑖 on day 𝑑j is modeled as
+
+and there will be 18 intercept estimates and 18 slope estimates.
+You can accomplish this by fitting regressions to 18 separate data sets of 10 observations each or by fitting 18 intercepts and slopes to the entire data set (using an appropriate model formula in R). Because the data are balanced (all subjects measured at the same days) your answer does not depend on the approach in this case.
+
+Once you have derived the 18 subject-specific intercepts and slopes, report their sample means and standard deviations. For example, the sample means for the intercepts and slopes are
+
+```{r warning = FALSE, message = FALSE}
+
+library(tidyverse)
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/sleepstudy.csv")
+
+model_all <- lm(Reaction ~ Days:Subject, data = data)
+
+SLR_results <- data %>%
+  group_by(Subject) %>%
+  do({
+    lm_fit <- lm(Reaction ~ Days, data = .)
+    data.frame(
+      intercept = coef(lm_fit)[1],
+      slope = coef(lm_fit)[2]
+    )
+  })
+
+
+intercept_mean <- mean(SLR_results$intercept)
+intercept_sd <- sd(SLR_results$intercept)
+slope_mean <- mean(SLR_results$slope)
+slope_sd <- sd(SLR_results$slope)
+
+cat("Sample mean of intercepts:", intercept_mean, "\n")
+cat("Sample standard deviation of intercepts:", intercept_sd, "\n")
+cat("Sample mean of slopes:", slope_mean, "\n")
+cat("Sample standard deviation of slopes:", slope_sd, "\n")
+
+
+```
+
+# Part 2. Correlated Error Model (40 pts)
+
+The assumption that repeated observations from the same subject are uncorrelated is not reasonable. In this part we analyze the data by introducing an auto-correlation function. Since the data are equally spaced, the standard auto-regressive AR(1) function is a good place to start:
+
+where 𝜙 measures the strength of the lag-1 correlation. If 𝜙 = 0 there is no autocorrelation.
+
+## 2.1.	Common linear regression with AR(1) errors
+
+Fit the following model
+ 
+𝑅𝑖j = 𝛽0 + 𝛽1𝑑j + 𝜖𝑖j 
+Corr[𝜖𝑖j, 𝜖𝑖𝑚] = 𝜙|j–𝑚|
+Cov[𝜖𝑖j, 𝜖𝑘𝑚] = 0
+
+and report the following:
+ 
+•	The estimates of 𝛽0, 𝛽1, and 𝜙
+•	The estimated correlation between measurements on the same subject that are two days apart.
+•	The likelihood ratio test for the hypothesis 𝐻: 𝜙 = 0. Based on this test, do you conclude whether the autocorrelation is significant?
+
+```{r warning = FALSE, message = FALSE}
+
+library(nlme)
+gls_AR1 <- gls(Reaction ~ Days, 
+               data = data, 
+               corExp(form = ~ 1 | Subject),
+               na.action = na.omit,
+               method = "REML")
+
+beta0 <- coef(gls_AR1)[1]
+beta1 <- coef(gls_AR1)[2]
+phi <- coef(gls_AR1$modelStruct$corStruct, unconstrained = FALSE)
+
+
+cat("beta0 of AR1 model:", beta0, "\n")
+cat("beta1 of AR1 model:", beta1, "\n")
+cat("pi of AR1 model:", phi, "\n")
+
+h = 2;
+corr <- exp(-h/phi)
+cat("correlation is: ", corr, "\n")
+
+gls_null <- gls(Reaction ~ Days, data = data)
+
+library(lmtest)
+lrtest(gls_null, gls_AR1)
+
+cat("AIC of gls_null is: ", AIC(gls_null), "\n")
+cat("AIC of gls_AR1 is: ", AIC(gls_AR1), "\n")
+
+```
+A significant p-value indicates that the data provide enough evidence to reject the null hypothesis. Therefore, the two models make a significant difference. Since AIC of gls_AR1 model is smaller, the autocorrelation is significant and gls_AR1 will provides a better fit.
+
+
+## 2.2 Subject-specific intercepts and slopes and AR(1) errors
+
+The model in 2.1 assumes that all subjects share the same trend in reaction time since there is one common intercept and one common slope.
+
+Does the following model with subject-specific intercepts and slopes provide a better fit to the data?
+
+𝑅𝑖j = 𝛽0𝑖 + 𝛽1𝑖 𝑑j + 𝜖𝑖j 
+Corr[𝜖𝑖j, 𝜖𝑖𝑚] = 𝜙|j–𝑚| Cov[𝜖𝑖j, 𝜖𝑘𝑚] = 0
+
+```{r warning = FALSE, message = FALSE}
+
+gls_AR1_ml <- gls(Reaction ~ Days, 
+               data = data, 
+               corExp(form = ~ 1 | Subject),
+               na.action = na.omit,
+               method = "ML")
+
+lme_AR1 <- lme(fixed = Reaction ~ 0,
+            random = ~ 1 + Days | Subject,
+            data = data, 
+            correlation = corCAR1(form = ~ 1 | Subject),
+            na.action=na.omit,
+            method = "ML")
+
+null_full_loglik = -2 * (logLik(gls_AR1_ml) - logLik(lme_AR1))
+pvalue <- pchisq(null_full_loglik, df=34, lower.tail=FALSE)
+pvalue 
+
+cat("AIC of gls_AR1_ml is: ", AIC(gls_AR1_ml), "\n")
+cat("AIC of lme_AR1 is: ", AIC(lme_AR1), "\n")
+
+```
+A non-significant p value and larger AIC indicates that the model with subject-specific intercepts and slopes does not provide a better fit to the data.
+
+
+# Part 3. Linear Mixed Model (40 pts)
+
+The model in 2.2 leads to the conclusion that the intercepts and slopes should vary by subjects. It accomplishes that by fitting a separate intercept and slope parameter for each subject.
+Including the residual variance and the auto-correlation parameter, the model in 2.2 uses 18*2
++ 2 = 38 parameters.
+We can model different intercepts and slopes for the subjects more parsimoniously by assuming that there is an overall trend for reaction time as a function of sleep deprivation that applies to an “average” subject and that the subject-to-subject variations are the result of random variation about the overall trend. In other words, we can express the variation in the data as a mixed model:
+𝑅𝑖j = (𝛽0 + 𝑏0𝑖) + (𝛽1 + 𝑏1𝑖)𝑑j + 𝜖𝑖j
+𝛽0 and 𝛽1 are the population average coefficients, these are fixed effects, and 𝑏0𝑖 and 𝑏1𝑖 are the subject-specific random deviations from the average. We still assume that the errors 𝜖𝑖j are serially correlated according to
+Corr[𝜖𝑖j, 𝜖𝑖𝑚] = 𝜙|j–𝑚| 
+Cov[𝜖𝑖j, 𝜖𝑘𝑚] = 0
+
+
+
+## 3.1 Fit the model
+
+Fit the linear mixed model by REML and report the following:
+•	The estimates 𝛽+0 and 𝛽+1. How do these compare to the sample means you calculated in Part 1?
+•	The estimated standard deviation of the 𝑏0𝑖 and the 𝑏1𝑖. How do these compare to the sample variances you calculated in Part 1?
+
+```{r warning = FALSE, message = FALSE}
+
+lme_AR1_fix <- lme(fixed = Reaction ~ 1 + Days,
+               random = ~ 1 + Days | Subject,
+               data = data, 
+               correlation = corCAR1(form = ~ 1 | Subject),
+               na.action = na.omit,
+               method = "REML",
+               control=lmeControl(opt="optim"))
+
+
+result = summary(lme_AR1_fix)
+result_fix = result$tTable
+
+b0_mean = result_fix[1]
+b1_mean = result_fix[2]
+
+b0_std = result_fix[3]
+b1_std = result_fix[4]
+
+cat("Sample mean of intercepts:", intercept_mean, 
+    "    overall intercept mean from lme: ",  b0_mean, "\n")
+cat("Sample standard deviation of intercepts:", intercept_sd, 
+    "    overall intercept std from lme: ",  b0_std, "\n")
+
+cat("Sample mean of slopes:", slope_mean, 
+    "    overall intercept mean from lme: ",  b1_mean, "\n")
+cat("Sample standard deviation of slopes:", slope_sd, 
+    "    overall intercept std from lme: ",  b1_std, "\n")
+
+```
+
+both overall intercept and slope means are similar to the samples means in Part1, but the standard deviation of overall intercept and slope are smaller than that in Part1
+
+
+## 3.2	Questions about the model
+
+•	With increasing time of sleep deprivation, which subject has the smallest increase in reaction time and which subject has the largest increase?
+•	Pick two subjects from the 18 that behave similar to the population average?
+•	What is the predicted reaction time on day 4 for an individual who did not participate in the study?
+
+```{r warning = FALSE, message = FALSE}
+
+slope_increase <- random.effects(lme_AR1_fix)[2]
+idx = which(slope_increase['Days'] == max(slope_increase[slope_increase > 0]))
+cat("Subject has the largest increase:", rownames(slope_increase)[idx])
+
+idx = which(slope_increase['Days'] == min(slope_increase[slope_increase > 0]))
+cat("Subject has the smallest increase:", rownames(slope_increase)[idx])
+
+vector_origin = c(0,0)
+vector_random = random.effects(lme_AR1_fix)
+L2 = sqrt((vector_random$`(Intercept)` - vector_origin[1])^2 + 
+            (vector_random$Days - vector_origin[2])^2)
+
+smallest2idx = which(L2 == sort(L2)[1] | L2 == sort(L2)[2])
+cat("Two subjects that behave similar to the population average:", 
+    rownames(vector_random)[smallest2idx])
+
+day_4_prediction <- predict(lme_AR1_fix, newdata = data.frame(Days = 4), re.form = NA, level = 0)
+cat("The predicted reaction time on day 4 for an individual who did not participate in the study:", 
+    as.numeric(day_4_prediction))
+
+
+```
+
+## 3.3 Graph
+
+Prepare a lattice (trellis) plot that shows the population-average and subject-specific predictions for the 18 subjects.
+
+```{r warning = FALSE, message = FALSE}
+
+result = summary(lme_AR1_fix)
+result_fix = result$tTable
+
+b0_mean = result_fix[1]
+b1_mean = result_fix[2]
+
+b0_std = result_fix[3]
+b1_std = result_fix[4]
+
+cat("Sample mean of intercepts:", intercept_mean, 
+    "    overall intercept mean from lme: ",  b0_mean, "\n")
+cat("Sample standard deviation of intercepts:", intercept_sd, 
+    "    overall intercept std from lme: ",  b0_std, "\n")
+
+cat("Sample mean of slopes:", slope_mean, 
+    "    overall intercept mean from lme: ",  b1_mean, "\n")
+cat("Sample standard deviation of slopes:", slope_sd, 
+    "    overall intercept std from lme: ",  b1_std, "\n")
+
+
+coef_fixed = fixed.effects(lme_AR1_fix)  
+intercept_fixed = coef_fixed[1]
+slope_fixed = coef_fixed[2]
+
+coef_random = random.effects(lme_AR1_fix)
+intercept_random = coef_fixed[1] + coef_random[1]
+slope_random = coef_fixed[2] + coef_random[2]
+
+
+df_coef_random <- data.frame(intercept_random = unlist(intercept_random), 
+                             slope_random = unlist(slope_random))     # based on the same Group to facet
+df_coef_random = df_coef_random %>% mutate(Subject = unique(data$Subject))
+
+df_coef_fixed = data.frame(intercept_fixed = unlist(intercept_fixed), 
+                           slope_fixed = unlist(slope_fixed))
+df_coef_fixed = df_coef_fixed[rep(seq_len(nrow(df_coef_fixed)), each = length(unique(data$Subject))), ]
+df_coef_fixed = df_coef_fixed %>% mutate(Subject = unique(data$Subject))
+
+
+ggplot(data = data, mapping = aes(Days, Reaction))+
+  geom_point(aes(color = factor(Subject)))+
+  geom_abline(data = df_coef_fixed, aes(intercept = intercept_fixed, slope = slope_fixed), 
+              color = "darkgrey", size = 1)+
+  geom_abline(data = df_coef_random, aes(intercept = intercept_random, slope = slope_random, 
+                                         color = factor(Subject)), size = 1)+
+  facet_wrap(~ Subject, scale = "fixed")+
+  scale_x_continuous(breaks = 0:9, labels = 0:9)+
+  labs(color = "Subject")+
+  theme(legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12,face = "bold"),
+        axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 7)),
+        axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)))
+
+
+```
+Hi Dr. Schabenberger, the title of legend is cropped so I upload a figure in the canvas. Moreover, I plot the fitted line here, a different way from what you taught in class. Hope this work for you! :]

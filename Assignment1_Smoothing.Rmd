@@ -1,0 +1,263 @@
+---
+title: "Smoothing"
+author: "Liangying Liu"
+date: "2024-01-20"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 100
+---
+
+# Part 1. The Period before 2001 (75 pts)
+## 1.1. Create a plot of the closing share price against date (10 pts)
+
+The figure above suggests that Apple share prices have risen with some ups and downs 
+continuously over the period captured by the data. But taking a closer look we see some 
+turbulent times when focusing on specific periods.
+For this part consider only the data up to and including “2000-12-25”
+
+```{r warning = FALSE, message = FALSE}
+
+library(ggplot2)
+library(tidyverse)
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/AppleSharesWeekly.csv")
+
+# re-encode the true time interval -- set 1996.1.1 as the origin
+data$Date <- as.Date(paste(data$year, data$month, data$day, sep = "-"))
+reference_date <- as.Date("1996-01-01")
+data$t <- as.numeric(data$Date - reference_date)
+
+data_f = data %>% filter(year <= 2000)
+r = nrow(data_f)
+
+ggplot(data = data_f, mapping = aes(x = t, y = Close))+
+  geom_line(size = 0.8)+
+  labs(x = 'Date', y = 'Closing Price', 
+       title = 'Weekly AAPL close share prices from 1996 to 2000')+
+  scale_x_continuous(breaks = data_f[seq(50, r, by = 50) - 25, "t"],
+                     labels = unique(data_f$year))+
+  theme_bw()+
+  theme(
+        axis.text.x = element_text(size = 13, face = "bold", vjust = 1, hjust = 0),
+        axis.text.y = element_text(size = 13,face = "bold"),
+        axis.title.x = element_text(size = 15, face = "bold",margin = margin(t = 10, r = 0, b = 0, l = 0)),   # change the distance between the axis title and the numbers. 
+        axis.title.y = element_text(size = 15, face = "bold",margin = margin(t = 0, r = 10, b = 0, l = 0)),   # change the distance between the axis title and the numbers. 
+        axis.ticks.length.y = unit(0.15, 'cm'),
+        plot.title = element_text(size = 15, face = "bold", hjust = 0.5, vjust = 4),
+        plot.margin = margin(t = 20))  
+```
+
+
+### 1.2. K-Nearest Neighbor Analysis (20 pts)
+### 1.2.1 (12 pts) Select the optimal number 𝑘 of nearest neighbors to predict the closing price using 10-fold cross-validation. Set the seed for the cross-validation to 456.
+
+
+```{r warning = FALSE, message = FALSE}
+library(Rfast)
+
+kk = seq(3, 20,1)
+kcv <- knn.cv(seed = 456, 
+              nfolds = 10, 
+              x = as.matrix(data_f$t),
+              y = data_f$Close,
+              k = kk,
+              type = "R")
+
+plot(x = kk,y = kcv$crit,type = "b",ylab = "CV-MSE",xlab="k",
+     main="10-fold cross-validation for k")
+abline(h = min(kcv$crit),col = "red",lty = "dashed")
+
+
+k = kk[which.min(kcv$crit)]
+cat("the optimal k is :", k, "\n")
+
+```
+
+
+### 1.2.2 (6 pts) Using the chosen value for 𝑘, predict the closing share price for January 1 of each year between 1996 and 2002.
+
+```{r warning = FALSE, message = FALSE}
+
+january_first_dates <- seq(as.Date("1996-01-01"), as.Date("2002-01-01"), by = "year")
+xpred = as.matrix(january_first_dates - reference_date)
+
+ypred <- Rfast::knn(x = as.matrix(data_f$t), y = data_f$Close, xnew = xpred, k = 3, type = 'R')
+print(ypred)
+
+```
+
+
+### 1.2.3 (2 pts) How do you explain the predicted value for January 1, 2002, since it falls outside the range of data for the analysis?
+
+#### Since the model is based on the dates from 1996 to 2000 and knn is interpolative rather than extrapolative, the prediced value for January 1, 2002 could be potentially unreliable. 
+
+## 1.3 Local Polynomial Regression (45 pts)
+### 1.3.1 (15 pts) Using the same dates for prediction as in 1.2.2, report the predicted closing prices using LOESS of degree 1, and 2, with spans of 0.25 and 0.75. (a total of 4 x 7 predicted values).
+### Hint: If you work with R date values you might need to pass them as as.numeric(date) to the loess function to avoid NaN errors.
+
+```{r warning = FALSE, message = FALSE}
+
+xpred = as.vector(xpred)
+m1 <- loess(Close ~ t, data = data_f, degree = 1, span = 0.25, control=loess.control(surface="direct"))
+ypred_m1 <- predict(m1, xpred)
+print(ypred_m1)
+
+m2 <- loess(Close ~ t, data = data_f, degree = 1, span = 0.75, control=loess.control(surface="direct"))
+ypred_m2 <- predict(m2, xpred)
+print(ypred_m2)
+
+m3 <- loess(Close ~ t, data = data_f, degree = 2, span = 0.25, control=loess.control(surface="direct"))
+ypred_m3 <- predict(m3, xpred)
+print(ypred_m3)
+
+m4 <- loess(Close ~ t, data = data_f, degree = 2, span = 0.75, control=loess.control(surface="direct"))
+ypred_m4 <- predict(m4, xpred)
+print(ypred_m4)
+
+
+```
+
+
+### 1.3.2 (2 pts) Which parameter has more effect on the predictions, the bandwidth, or the degree?
+```{r  warning = FALSE, message = FALSE}
+
+options(width = 100)
+
+ymin = min(c(ypred_m1, ypred_m2, ypred_m3, ypred_m4))
+ymax = max(c(ypred_m1, ypred_m2, ypred_m3, ypred_m4))
+
+
+plot(xpred, ypred_m1, type = "b", pch = 16, col = "blue", lty = 1, xlab = "xpred", ylab = "ypred", ylim = c(ymin, ymax))
+lines(xpred, ypred_m2, col = "blue", lwd=1.5, lty="solid")
+points(xpred, ypred_m2, col = "blue", pch = 0)
+
+lines(xpred, ypred_m3, col = "red", lwd=1.5, lty="solid")
+points(xpred, ypred_m3, col = "red", pch = 16)
+
+lines(xpred, ypred_m4, col = "red", lwd=1.5, lty="solid")
+points(xpred, ypred_m4, col = "red", pch = 0)
+
+
+legend(x = 1, y = -1,
+       legend = c("degree:1 span:0.25", "degree:1 span:0.75", "degree:2 span:0.25", "degree:2 span:0.25"),
+       col = c("blue", "blue", "red", "red"),
+       pch = c(16, 0, 16, 0),
+       title = "Legend"
+)
+
+
+```
+
+#### It seems like the overall difference is not that dinstinct from the plot.
+
+### 1.3.3 (20 pts) Use 10-fold cross-validation (set seed to 123) to find the best span for a LOESS model of degree 1, as judged by RMSE. 
+###Hint: Check out the file Smoothing.Rmd on how to do this with the caret::train function.
+
+```{r  warning = FALSE, message = FALSE}
+
+library(caret)
+set.seed(123)
+
+span = seq(0, 0.9, len = 50)
+ctrl <- trainControl(method = "cv", number = 10)
+grid <- expand.grid(span = span, degree = 1)
+model <- train(Close ~ t,
+               data = data_f,
+               method = "gamLoess",
+               tuneGrid = grid,
+               trControl = ctrl)
+plot(model)
+
+s = span[which.min(model$results$RMSE)]
+cat("the optimal span is :", s, "\n")
+
+
+```
+
+
+### 1.3.4 (8 pts) Produce a plot overlaying the data and the LOESS fit with the best span value from 1.3.3
+```{r  warning = FALSE, message = FALSE}
+
+final <- loess(Close ~ t, data = data_f, degree = 1, span = 0.03673469, control=loess.control(surface="direct"))
+yfinal = final$fitted
+
+
+plot(data_f$t, data_f$Close,  col = "black", xlab = "t", ylab = "Close")
+lines(data_f$t, yfinal, col = "red", lwd = 2, lty = "solid")
+
+
+legend(x = 1, y = 1.2,
+       legend = c("degree:1   span:0.03673469"),
+       col = c("red"),
+       lty = c("solid")
+)
+
+
+```
+
+
+# Part 2. The Entire Data Set (25 pts)
+# For this part of the homework set, work with all weekly prices in the file.
+## 2.1 Regression Splines (25 pts)
+### 2.1.1 (15 pts) Create natural cubic splines based on the weekly time data with 3, 6, and 50 degrees of freedom (do not include the intercept in the spline basis) and fit regression splines for the closing share price.
+
+```{r warning = FALSE, message = FALSE}
+
+library(splines)
+ns_3 <- ns(data$t, df = 3, intercept = FALSE)
+ns_6 <- ns(data$t, df = 6, intercept = FALSE)
+ns_50 <- ns(data$t, df = 50, intercept = FALSE)
+
+model_3 <- lm(Close ~ ns_3, data = data)
+model_6 <- lm(Close ~ ns_6, data = data)
+model_50 <- lm(Close ~ ns_50, data = data)
+
+
+plot(data$t,data$Close, 
+     col = "grey",
+     main="Regression splines with 3, 6 and 50 df",
+     xlab="t",
+     ylab="Closing price")
+lines(data$t,predict(model_3), col = "red", lwd = 2, lty = "solid")
+lines(data$t,predict(model_6), col = "green", lwd = 2, lty = "solid")
+lines(data$t,predict(model_50), col = "blue", lwd = 2, lty = "solid")
+
+legend(x = 1, y = 190,
+       legend = c("df: 3", "df: 6", "df: 50"),
+       col = c("red", "green", "blue"),
+       lty = c("solid", "solid", "solid")
+)
+
+```
+
+### 2.1.2 (10 pts) Report the R2 values and the residual sum of squares of the three models
+
+```{r warning = FALSE, message = FALSE}
+
+summary_3 <- summary(model_3)
+r_squared_3 = summary_3$r.squared
+residual_sum_squares_3 <- sum(summary_3$residuals^2)
+cat("Model with 3 degrees of freedom:\n")
+cat("R-squared:", r_squared_3, "\n")
+cat("Residual Sum of Squares:", residual_sum_squares_3, "\n\n")
+
+summary_6 <- summary(model_6)
+r_squared_6 = summary_6$r.squared
+residual_sum_squares_6 <- sum(summary_6$residuals^2)
+cat("Model with 6 degrees of freedom:\n")
+cat("R-squared:", r_squared_6, "\n")
+cat("Residual Sum of Squares:", residual_sum_squares_6, "\n\n")
+
+
+summary_50 <- summary(model_50)
+r_squared_50 = summary_50$r.squared
+residual_sum_squares_50 <- sum(summary_50$residuals^2)
+cat("Model with 50 degrees of freedom:\n")
+cat("R-squared:", r_squared_50, "\n")
+cat("Residual Sum of Squares:", residual_sum_squares_50, "\n\n")
+```

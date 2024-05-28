@@ -1,0 +1,310 @@
+---
+title: "Assignment6"
+author: "Liangying Liu"
+date: "2024-03-23"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+# Logistic Regression
+
+
+```{r warning = FALSE, message = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(glmnet)
+library(rpart)
+library(MASS)
+library(e1071)
+library(randomForest)
+library(adabag)
+library(dplyr)
+library(gbm)
+library(xgboost)
+
+
+df_training = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/banana_train.csv")
+df_test = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/banana_test.csv")
+
+table(df_training$Quality)  
+print("data is balanced")
+
+df_training$Quality <- ifelse(df_training$Quality == "Good", 1, 0)
+df_test$Quality <- ifelse(df_test$Quality == "Good", 1, 0)
+
+df_training$Quality <- factor(df_training$Quality)
+df_test$Quality <- factor(df_test$Quality)
+
+
+data_scale = 0
+
+if(data_scale)
+{
+  df_training = df_training %>% dplyr::select(-c(Quality)) %>% scale() %>% as.data.frame() %>% mutate(Quality = df_training$Quality)
+  df_test = df_test %>% dplyr::select(-c(Quality)) %>% scale() %>% as.data.frame() %>% mutate(Quality = df_test$Quality)
+}
+
+
+train_data = df_training
+test_data = df_test
+
+
+#----------------------------------------LR-------------------------------------------
+model_LR = glm(Quality ~ ., data = train_data, family = binomial(link='logit'))
+LR_pred = predict(model_LR, newdata = test_data, type = "response")
+LR_pred <- ifelse(LR_pred > 0.5, 1, 0)
+
+LR_CFM = confusionMatrix(data = as.factor(LR_pred), reference = train_data$Quality)
+cat('Logistic Regression Test Accuracy:', LR_CFM$overall['Accuracy'])
+
+#pairs(df_training[, -ncol(df_training)], col = df_training$Quality, pch = 16)
+corr_matrix = cor(train_data[, -ncol(train_data)])
+
+```
+
+
+# Logistic Regression with regularization
+
+```{r warning = FALSE, message = FALSE}
+
+x_train = as.matrix(train_data[, -ncol(train_data)])
+y_train = train_data$Quality
+
+x_test = as.matrix(test_data[, -ncol(test_data)])
+y_test = test_data$Quality
+
+lambda_values <- 10^seq(10, -2, length = 100)
+alpha_values <- seq(0, 1, 0.1)
+
+#k_values <- seq(3, 20, 1) 
+k_values = 15
+
+ctrl <- trainControl(method = "cv", number = k_values)
+param_grid <- expand.grid(lambda = lambda_values, alpha = alpha_values)
+
+LR_cv <- train(x_train, y_train, 
+               method = "glmnet", 
+               trControl = ctrl, 
+               tuneGrid = param_grid, 
+               family = "binomial")
+
+alpha_best = LR_cv$bestTune$alpha
+lambda_best = LR_cv$bestTune$lambda
+
+LR_cv_best <- glmnet(x_train, y_train, alpha = alpha_best, lambda = lambda_best, family = "binomial")
+
+LR_cv_pred = predict(LR_cv_best, newx = x_test, type = "response")
+LR_cv_pred <- ifelse(LR_cv_pred > 0.5, 1, 0)
+
+LR_cv_CFM = confusionMatrix(data = as.factor(LR_cv_pred), reference = test_data$Quality)
+cat('Logistic Regression_L1 Test Accuracy:', LR_cv_CFM$overall['Accuracy'])
+
+```
+
+
+# Decision Tree
+
+```{r warning = FALSE, message = FALSE}
+
+model_DT <- rpart(Quality ~ ., data = train_data, method = "class")
+DT_pred <- predict(model_DT, newdata = test_data, type = "class")
+
+DT_CFM = confusionMatrix(data = as.factor(DT_pred), reference = test_data$Quality)
+cat('Decision tree Test Accuracy:', DT_CFM$overall['Accuracy'])
+
+
+```
+
+# Naïve Bayes
+
+```{r warning = FALSE, message = FALSE}
+
+model_NB <- naiveBayes(Quality ~ ., data = train_data, laplace = 1)
+NB_pred <- predict(model_NB, newdata = test_data)
+NB_CFM = confusionMatrix(data = as.factor(NB_pred), reference = test_data$Quality)
+cat('Naïve Bayes Accuracy:', NB_CFM$overall['Accuracy'])
+
+```
+
+
+# Random Forest
+
+```{r warning = FALSE, message = FALSE}
+
+set.seed(349)
+model_rf <- randomForest(Quality ~ ., data = train_data)
+rf_pred <- predict(model_rf, newdata = test_data)
+rf_CFM = confusionMatrix(data = as.factor(rf_pred), reference = test_data$Quality)
+cat('Random Forest Test Accuracy:', rf_CFM$overall['Accuracy'])
+
+```
+
+# Adaptive boosting
+
+```{r warning = FALSE, message = FALSE}
+
+set.seed(389)
+model_adaboost <- boosting(Quality ~ ., data = train_data, boos = TRUE)
+ada_pred <- predict.boosting(model_adaboost, newdata = test_data)$class
+ada_CFM = confusionMatrix(data = as.factor(ada_pred), reference = test_data$Quality)
+cat('Adaptive boosting Test Accuracy:', ada_CFM$overall['Accuracy'])
+
+```
+
+# Gradient boosting
+
+```{r warning = FALSE, message = FALSE}
+
+train_data2 = train_data
+test_data2 = test_data
+
+train_data2$Quality = as.character(train_data2$Quality)
+test_data2$Quality = as.character(test_data2$Quality)
+
+set.seed(911)
+model_gbm <- gbm(Quality ~ ., data = train_data2, distribution = "bernoulli",
+                 cv.folds=5,
+                 train.fraction=0.75,
+                 n.minobsinnode=0,
+                 interaction.depth=2)
+
+gbm_pred <- predict(model_gbm, newdata = test_data2, type = "response",n.trees = 100)
+gbm_pred <- ifelse(gbm_pred > 0.5, 1, 0)
+
+gbm_CFM = confusionMatrix(data = as.factor(gbm_pred), reference = as.factor(test_data$Quality))
+cat('Gradient boosting Test Accuracy:', gbm_CFM$overall['Accuracy'])
+
+```
+
+
+# Gradient boosting with best hyperparamters
+
+
+```{r warning = FALSE, message = FALSE}
+
+set.seed(201)
+
+k_values = 10
+
+param_grid <- expand.grid(
+  n.trees = c(100, 200, 300),              
+  interaction.depth = c(1, 3, 5),           
+  shrinkage = c(0.01, 0.03, 0.05, 0.07, 0.1),            
+  n.minobsinnode = c(0, 10, 20, 30)
+)
+
+
+ctrl <- trainControl(
+  method = "cv", 
+  number = k_values,   
+  verboseIter = FALSE 
+)
+
+
+gbm_cv <- train(
+  x_train, y_train,
+  method = "gbm", 
+  trControl = ctrl,
+  tuneGrid = param_grid,
+  verbose = FALSE   
+)
+
+
+gbm_cv_best <- gbm(Quality ~ ., data = train_data2, distribution = "bernoulli",
+                   n.trees =  gbm_cv$bestTune$n.trees,
+                   shrinkage =  gbm_cv$bestTune$shrinkage, 
+                   n.minobsinnode = gbm_cv$bestTune$n.minobsinnode,
+                   interaction.depth =  gbm_cv$bestTune$interaction.depth)
+
+
+gbm_cv_pred <- predict(gbm_cv_best, newdata = test_data2, 
+                       n.trees = gbm_cv$bestTune$n.trees,
+                       type = "response")
+
+gbm_cv_pred <- ifelse(gbm_cv_pred > 0.5, 1, 0)
+
+gbm_cv_CFM = confusionMatrix(data = as.factor(gbm_cv_pred), reference = as.factor(test_data$Quality))
+cat('Gradient boosting with best hyperparamters Test Accuracy:', gbm_cv_CFM$overall['Accuracy'])
+
+```
+
+
+# XGboost
+
+```{r warning = FALSE, message = FALSE}
+
+
+xgdata <- xgb.DMatrix(x_train,
+                      label = train_data$Quality)
+
+xgtest <- xgb.DMatrix(x_test,
+                      label = test_data$Quality)
+set.seed(200)
+model_xgb <- xgb.train(data = xgdata,
+                     watchlist = list(test=xgtest),
+                     max.depth = 6, # maximum depth of a tree
+                     eta = 0.3,  #learning rate, 0 < eta < 1
+                     early_stopping_rounds = 3,
+                     subsample = 1,
+                     objective = "binary:logistic",
+                     nrounds = 100)
+
+
+xgb_pred <- predict(model_xgb, x_test)
+
+xgb_pred <- ifelse(xgb_pred > 0.5, 1, 0)
+
+xgb_CFM = confusionMatrix(data = as.factor(xgb_pred), reference = as.factor(test_data$Quality))
+cat('xgBoost Test Accuracy:', xgb_CFM$overall['Accuracy'])
+
+
+```
+
+
+# SVM
+
+```{r warning = FALSE, message = FALSE}
+
+set.seed(21)
+tune.out <- tune(svm, Quality ~ .,
+                 data = train_data,
+                 kernel = "radial",
+                 ranges = list(cost = c(0.1 , 1, 10, 100, 1000) ,
+                               gamma = c(0.5, 1, 2, 3, 4))
+)
+
+svm_pred <- predict(tune.out$best.model,newdata = test_data)
+svm_CFM = confusionMatrix(data = as.factor(svm_pred), reference = as.factor(test_data$Quality))
+cat('SVM Test Accuracy:', svm_CFM$overall['Accuracy'])
+
+
+```
+
+
+
+```{r warning = FALSE, message = FALSE}
+
+cat(' Logistic Regression Test Accuracy:', LR_CFM$overall['Accuracy'], "\n",
+    'Logistic Regression_L1 Test Accuracy:', LR_cv_CFM$overall['Accuracy'], "\n",
+    'Decision tree Test Accuracy:', DT_CFM$overall['Accuracy'], "\n",
+    'Naïve Bayes Test Accuracy:', NB_CFM$overall['Accuracy'], "\n",
+    'Random Forest Test Accuracy:', rf_CFM$overall['Accuracy'], "\n",
+    'Adaptive boosting Test Accuracy:', ada_CFM$overall['Accuracy'], "\n",
+    'Gradient boosting Test Accuracy:', gbm_CFM$overall['Accuracy'], "\n",
+    'Gradient boosting with best hyperparamters Test Accuracy:', gbm_cv_CFM$overall['Accuracy'], "\n",
+    'xgBoost Test Accuracy:', xgb_CFM$overall['Accuracy'], "\n",
+    'SVM Test Accuracy:', svm_CFM$overall['Accuracy']
+    )
+
+```
+
+
+
+

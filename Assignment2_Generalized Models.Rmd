@@ -1,0 +1,373 @@
+---
+title: "Assignment2"
+author: "Liangying Liu"
+date: "2024-02-02"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 100
+---
+
+# Part 1. Smoothing Splines for Apple Closing Share Prices (30 pts)
+  Recall the closing weekly share price of AAPL stock between 1996 and 2024 (file AppleSharesWeekly.csv)
+
+  Using the smooth.spline() function in R, determine the appropriate degree of smoothness of 
+  a cubic smoothing spline that models weekly closing prices as a function of time (date) by leave-one-out cross-validation   for two scenarios:
+  
+  a. Placing a knot at every unique date value (all.knots=TRUE op:on)
+  b. Using the default knot placement (all.knots=FALSE) which places a certain number of 
+     knots evenly over the range of dates.
+
+
+## 1.1 Print the objects returned from smooth.spline() for the two analyses. Based on the output, which analysis do you prefer for this data set?
+```{r warning = FALSE, message = FALSE}
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/AppleSharesWeekly.csv")
+
+data$Date <- as.Date(paste(data$year, data$month, data$day, sep = "-"))
+data$Date <- as.numeric(data$Date)   # origin: 1970.1.1
+
+
+smsp1 <- smooth.spline(x = data$Date,
+                      y = data$Close,
+                      cv = TRUE,
+                      all.knots = TRUE) 
+
+smsp2 <- smooth.spline(x = data$Date,
+                       y = data$Close,
+                       cv = TRUE,
+                       all.knots = FALSE) 
+
+
+print(smsp1)
+print(smsp2)
+```
+   In general, lower values of the PRESS (Prediction Residual Sum of Squares) indicates better performance. Thus, the model with "all.knots = TRUE" would be preferred.
+   
+
+## 1.2 How many knots were used in analysis b. (all.knots=FALSE)?
+```{r warning = FALSE, message = FALSE}
+
+nk = smsp2$fit$nk-2
+cat("the number of knots is :", nk, "\n")
+
+```
+## 1.3 Create a graphic with the observed data and the predictions from the smoothing spline.
+```{r warning = FALSE, message = FALSE}
+
+ypred1 <- predict(smsp1, data$Date)$y
+ypred2 <- predict(smsp2, data$Date)$y
+
+plot(data$Date, data$Close, type = "b", pch = 16, col = "grey", lty = 1, xlab = "t", ylab = "Close",
+     main = expression(paste("Smoothing spline with ",lambda," by LOOCV")))
+lines(data$Date, ypred1, col = "blue", lwd=2, lty="solid")
+lines(data$Date, ypred2, col = "red", lwd=2, lty="solid")
+
+legend(x = 10000, y = 150,
+       legend = c("all.knots = TRUE", "all.knots = FALSE"),
+       col = c("blue", "red"),
+       lty = c("solid", "solid"))
+
+```
+## 1.4 Suppose you fit a regression spline with a natural cubic spline basis with degrees of freedom 
+## equal to the equivalent degrees of freedom of the all.knots=TRUE spline. What is the 
+## correlation between the fitted values of the smoothing and the regression spline?
+```{r warning = FALSE, message = FALSE}
+
+library(splines)
+
+df_smsp_all = smsp1$df
+t_ns <- ns(data$Date, df = df_smsp_all)
+model_ns <- lm(Close ~ t_ns, data)
+ypred_ns <- predict(model_ns, data.frame(data$Date))
+
+cat('the correlation is:', cor(ypred1, ypred_ns),"\n")
+
+```
+
+
+
+# Part 2. Generalized Models (70 pts)
+  The data used for this problem are a subset of the observations and variables collected in the 
+  RAND Health Insurance Experiment over seral years. The data includes variables on the number 
+  of contacts with a medical doctor, medical expenditures, demographics, health status, and 
+  insurance status. We are interested in modeling the number of face-to-face doctor visits variable mdvis. The other variables in the file docvisits.csv are as follows:
+
+
+## 2.1Poisson Regression (20 pts)
+## 2.1.1 Full and reduced models
+Fit a full model for target variable mdvis with all predictors. 
+Show that the difference between the null and the residual deviance is identical to the 
+likelihood-ratio test statistics that compares the full model to a model without any predictors.
+
+```{r warning = FALSE, message = FALSE}
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/docvisits.csv")
+
+poisson_model <- glm(mdvis ~ ., data = data,family = "poisson")  # . means all variables not already mentioned in the formula
+null_full_deviance <- summary(poisson_model)$null.deviance - summary(poisson_model)$deviance
+
+null_model <- glm(mdvis ~ 1, data = data,family = "poisson")
+null_full_loglik = -2 * (logLik(null_model) - logLik(poisson_model))
+
+cat("the difference between the null and the residual deviance:", null_full_deviance, "\n")
+cat("Likelihood Ratio Test Statistic using logLik:", null_full_loglik, "\n")
+
+```
+
+## 2.1.2 Model for a subset of the data
+Refit the full model with all predictors, but this time limit the observations in the analysis to 
+those records where parents had less than seven doctor visits per year (mdvis < 7). Report the 
+summary of the model.
+The ratio of deviance to degrees of freedom is an indica:on of the scale of the data. Es:mate 
+the scale parameter of the full model based on all data (2.1.1) and based on the subset. What 
+do you conclude based on these estimates?
+
+```{r warning = FALSE, message = FALSE}
+
+library(tidyverse)
+data_f = data %>% filter(mdvis < 7)
+
+poisson_model_f = glm(mdvis ~ ., data = data_f,family = "poisson")
+summary(poisson_model_f)
+
+scale_parameter_full = summary(poisson_model)$deviance / summary(poisson_model)$df.residual
+
+scale_parameter_subset = summary(poisson_model_f)$deviance / summary(poisson_model_f)$df.residual
+
+cat("Scale Parameter (Full Model):", scale_parameter_full, "\n")
+cat("Scale Parameter (Subset Model):", scale_parameter_subset, "\n")
+
+```
+
+The difference in scaled deviance values between the full model and the subset model indicates that the model is less effective in capturing the variability in the full data group, i.e., the model does not fit the data in the entire dataset as well as it does with this specific subset.
+
+
+## 2.2 Generalized Addictive Model (10 pts)
+For this analysis, consider the subset of the data from 2.1.2 where the number of face-to-face 
+doctor visits is less than 7 per year.
+Consider a Poisson model with only predictors xage and income.
+Perform a likelihood ratio test whether a generalized addictive model with smoothing splines in 
+both input variables provides a better fit:
+```{r warning = FALSE, message = FALSE}
+
+# install.packages("lmtest")
+library(gam)
+library(lmtest)
+
+poisson_model_f2 = glm(mdvis ~ xage + income, data = data_f,family = "poisson")
+poisson_model_f2_gam = gam(mdvis ~ s(xage) + s(income), data = data_f,family = "poisson")
+
+glm_gam_loglik <- -2*(logLik(poisson_model_f2) - logLik(poisson_model_f2_gam))
+pvalue <- pchisq(glm_gam_loglik, df=1, lower.tail=FALSE)
+pvalue
+
+cat("AIC of glm is: ", poisson_model_f2$aic, "\n")
+cat("AIC of gam model is: ", poisson_model_f2_gam$aic, "\n")
+
+```
+
+A significant p-value indicates that the data provide enough evidence to reject the null hypothesis. Therefore, the two models make a significant difference. Since AIC of gam model is smaller, gam will provides a better fit.
+
+## 2.3 Negative Binomial Regression (20 pts)
+## 2.3.1 Full Model
+Repeat the analysis of the full model for all data but now assume that the number of doctor 
+visits follows a Negative Binomial distribution. Report the summary of the negative binomial 
+analysis.
+
+```{r warning = FALSE, message = FALSE}
+
+# install.packages("MASS")
+library(MASS)
+nb_model <- glm.nb(mdvis ~ ., data = data, link="log")
+summary(nb_model)
+
+```
+
+
+## 2.3.2 LRT
+Can you use the likelihood-ratio test to decide whether the Poisson or the Negative Binomial 
+model fits the data better?
+
+```{r warning = FALSE, message = FALSE}
+
+possion_nb_loglik <- -2*(logLik(poisson_model) - logLik(nb_model))
+pvalue <- pchisq(possion_nb_loglik, df=1, lower.tail=FALSE)
+pvalue
+
+cat("AIC of poisson model is: ", poisson_model$aic, "\n")
+cat("AIC of negative binomial model is: ", nb_model$aic, "\n")
+
+```
+
+
+A significant p-value indicates that the data provide enough evidence to reject the null hypothesis.Therefore, the two models make a significant difference. Since AIC of negative binomial model is smaller, negative binomial will provides a better fit.
+
+
+## 2.3.3 Predictions
+Compare the predictions from the Poisson and the Negative Binomial model. You can make the 
+comparisons on the scale of the linear predictor (type=”link”) or on the scale of the mean 
+function (type=”response”); both scales lead to the same conclusion.
+Does the choice of model (NegBin vs Poisson) have an effect on the predicted values? Does it 
+have an effect on the precision of the predicted values?
+Hint: You will need to decide how to compare the predictions between the models, graphically, 
+numerically, etc. Also, check out the options of the predict.glm() function!
+
+```{r warning = FALSE, message = FALSE}
+
+#--------------the predicted values-------------------------------------------
+xpred <- data[, -which(names(data) == "mdvis")]
+pred_possion <- predict(poisson_model, newdata = xpred, type = "link")
+pred_nb <- predict(nb_model, newdata = xpred, type = "link")
+
+plot(pred_possion, pred_nb, main = "Comparison on Link Scale",
+     xlab = "Poisson Predictions (Link Scale)", ylab = "Negative Binomial Predictions (Link Scale)")
+abline(a = 0, b = 1, col = "red", lty = 2)
+
+df_pred_possion_nb <- pred_possion - pred_nb
+head(df_pred_possion_nb)
+cat("Maximum difference:", max(df_pred_possion_nb))
+
+t_pred_possion_nb <- t.test(pred_possion, pred_nb)
+cat("p-valuefrom the two-sample t-test on predicted values is:", t_pred_possion_nb$p.value, "\n")
+
+
+#------------the precision of the predicted values-------------------------------
+se_poisson <- predict(poisson_model, newdata = xpred, type = "link", se.fit = TRUE)$se.fit
+se_nb <- predict(nb_model, newdata = xpred, type = "link", se.fit = TRUE)$se.fit
+
+plot(se_poisson, se_nb, main = "Comparison of Standard Errors",
+     xlab = "Poisson (se)", ylab = "Negative Binomial (se)")
+abline(a = 0, b = 1, col = "red", lty = 2)
+
+t_se_possion_nb <- t.test(se_poisson, se_nb)
+cat("p-valuefrom the two-sample t-test on se is:", t_se_possion_nb$p.value, "\n")
+
+
+se = as.vector(c(se_poisson, se_nb))
+group = c(rep(0, length(se_poisson)),rep(1, length(se_nb)))
+se_df <- data.frame(SE = se, group = group)
+
+library(tidyverse)
+
+se_stats <- se_df %>%
+  group_by(group) %>%
+  summarize(
+    mean = mean(SE),
+    sd = sd(SE),
+    se = sd(SE) / sqrt(n()))
+
+ggplot(se_stats) +
+  geom_bar(aes(x = factor(group), y = mean), stat="identity", fill="#4A82FF", width = 0.45, alpha=0.7) +
+  geom_errorbar(aes(x = factor(group), ymin = mean - se, ymax = mean + se), width = 0.2, colour="#808069", alpha=0.9, size=1.3)+
+  scale_x_discrete(labels = c("0" = "possion", "1" = "negative binomial"))+
+  xlab('')+
+  ylab("se")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_text(size = 13, face = "bold", vjust = 0.5, hjust = 0.5),
+    axis.text.y = element_text(size = 13,face = "bold"),
+    axis.title.x = element_text(size = 15, face = "bold",margin = margin(t = 10, r = 0, b = 0, l = 0)),   # change the distance between the axis title and the numbers. 
+    axis.title.y = element_text(size = 15, face = "bold",margin = margin(t = 0, r = 10, b = 0, l = 0)),   # change the distance between the axis title and the numbers. 
+    axis.ticks.length.y = unit(0.15, 'cm'),
+    plot.title = element_text(size = 15, face = "bold", hjust = 0.5, vjust = 4),
+    plot.margin = margin(t = 20))  
+  
+```
+To sum up, the predicted value between two models are highly close and there is no significant difference. However, from the two-sample t-test and errorbar plot, it suggests that possion model provides more precise estimates negative binomial model.
+
+
+
+## 2.4 Zero-inflated Poisson Model (20 pts)
+## 2.4.1 Fit the model
+Fit a zero-inflated Poisson model to all data in which the Poisson part includes the variables 
+xage, female, totadm, child, and fchild and the zero-inflated part is a logistic regression with 
+variable physlm.
+Report the summary for the zero-inflated model.
+
+
+```{r warning = FALSE, message = FALSE}
+
+library(pscl)
+
+zip_model <- zeroinfl(mdvis ~ xage + female + totadm + child + fchild | physlm,
+                      data = data, dist = "poisson", link="logit")
+summary(zip_model)
+
+```
+
+## 2.4.2 Mixing Probs
+What is the mixing probability of the zero-inflated process for a cohort with and without 
+physical limitations?
+
+
+```{r warning = FALSE, message = FALSE}
+
+coef_physlm_beta0 = as.numeric(coef(zip_model)['zero_(Intercept)'])
+coef_physlm_beta1 = as.numeric(coef(zip_model)['zero_physlm'])
+
+mp_without_physlm =  1 / (1 + exp(-coef_physlm_beta0))
+mp_with_physlm =  1 / (1 + exp(-(coef_physlm_beta0 + coef_physlm_beta1)))
+
+cat(" the mixing probability of the zero-inflated process for a cohort without 
+physical limitations is: ", mp_without_physlm, "\n")  
+
+cat(" the mixing probability of the zero-inflated process for a cohort with 
+physical limitations is: ", mp_with_physlm, "\n")  
+
+```
+
+
+## 2.4.3 Predictions
+Compute the predicted number of doctor visits for a male child, 8 years old, without physical 
+limitations and without hospital admissions. Perform the computation in two ways:
+• using the predict() function
+• computing it directly from the model coefficients
+
+
+```{r warning = FALSE, message = FALSE}
+
+new_data <- data.frame(
+  xage = 8,
+  female = 0,  
+  totadm = 0,  
+  child = 1,   
+  fchild = 0,  
+  physlm = 0   
+)
+
+pred_visits <- predict(zip_model, newdata = new_data, type = "response")
+
+lp <- coef(zip_model)['count_(Intercept)'] + coef(zip_model)['count_xage'] * 8 + 
+                      coef(zip_model)['count_child'] * 1 
+pred_visits_coef = mp_without_physlm * 0 + (1 - mp_without_physlm) * exp(as.numeric(lp))
+
+cat("using the predict() function for response type: ", pred_visits, "\n")
+cat("using the the model coefficients for response type: ", pred_visits_coef, "\n")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,279 @@
+---
+title: "Assignment7"
+author: "Liangying Liu"
+date: "2024-04-03"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+# Part 1 The AND Gate 
+
+  Set all weights wij = 1, all bias bj = -1. \
+  
+  1. if x1 = 0, x2 = 0.  \
+     h1 = Relu(1 * 0 + 1 * 0 -1) = Relu(-1) = 0  \
+     h2 = Relu(1 * 0 + 1 * 0 -1) = Relu(-1) = 0  \
+     yhat = Relu(1 * 0 + 1 * 0 - 1) = Relu(-1) = 0  \
+     
+  2. if x1 = 1, x2 = 0.  \
+     h1 = Relu(1 * 1 + 1 * 0 -1) = Relu(0) = 0  \
+     h2 = Relu(1 * 1 + 1 * 0 -1) = Relu(0) = 0  \
+     yhat = Relu(1 * 0 + 1 * 0 - 1) = Relu(-1) = 0  \
+     
+  3. if x1 = 0, x2 = 1. \
+     the same with case2. yhat = 0  \
+     
+  4. if x1 = 1, x2 = 1.   \
+     h1 = Relu(1 * 1 + 1 * 1 -1) = Relu(1) = 1  \
+     h2 = Relu(1 * 1 + 1 * 1 -1) = Relu(1) = 1  \
+     yhat = Relu(1 * 1 + 1 * 1 - 1) = Relu(1) = 1  \
+     
+     
+
+## 1.2	Linear Model (10 points)
+
+```{r warning = FALSE, message = FALSE}
+
+df <- data.frame(x1 = c(0,0,1,1), x2 = c(0,1,0,1), y = c(0,0,0,1))
+
+lm_and <- lm(y ~ x1:x2 - 1, data = df)
+summary(lm_and)
+
+```
+Only 1 parameter that is needed!
+
+
+# Part 2. Training Neural Networks 
+ 
+```{r warning = FALSE, message = FALSE}
+
+library("keras")
+reticulate::use_condaenv(condaenv = "r-tensorflow")
+
+
+ban_train = read.csv(file="/cloud/project/banana_train.csv")
+ban_test = read.csv(file="/cloud/project/banana_test.csv")
+
+x_train <- scale(ban_train[,1:7])
+x_test  <- scale(ban_test[,1:7])
+
+y_train <- ifelse(ban_train$Quality=="Good",1,0)
+yc_train <- to_categorical(y_train, 2)
+
+y_test  <- ifelse(ban_test$Quality=="Good",1,0)
+yc_test  <- to_categorical(y_test, 2)
+
+```
+
+
+
+```{r warning = FALSE, message = FALSE}
+
+model_perceptron <- keras_model_sequential() %>%
+    layer_dense(units = 2,
+                input_shape = ncol(x_test),
+                activation = "softmax",
+                name = "Output"
+                )
+
+summary(model_perceptron)
+
+```
+
+
+```{r warning = FALSE, message = FALSE}
+
+model_perceptron %>% compile(loss="categorical_crossentropy",
+                             optimizer=optimizer_rmsprop(), 
+                             metrics=c("accuracy")
+                             )
+
+```
+
+# Network Without Hidden Layer 
+
+```{r warning = FALSE, message = FALSE}
+
+system.time(
+  history <- model_perceptron %>%
+      fit(x_train, 
+          yc_train, 
+          epochs = 100, 
+          batch_size = 128,
+          validation_data= list(x_test, yc_test)
+          )
+)
+plot(history, smooth = FALSE)
+
+
+```
+
+
+```{r warning = FALSE, message = FALSE}
+
+y_pred_prob = model_perceptron %>% predict(x_test)
+y_pred <- apply(y_pred_prob, 1, which.max) - 1
+
+CFM_perceptron <- table(y_test, y_pred)
+CFM_perceptron
+
+acc <- sum(diag(CFM_perceptron)) / sum(CFM_perceptron)
+acc
+
+```
+
+# Single Layer Network 
+
+```{r warning = FALSE, message = FALSE}
+model_SLN <- keras_model_sequential() %>%
+      layer_dense(units = 98,
+                input_shape = ncol(x_test),
+                activation = "tanh",
+                name = "Hidden1"
+                ) %>%
+      layer_dense(units = 2,
+                  activation = "softmax",
+                  name = "Output"
+                  )
+
+summary(model_SLN)
+
+
+
+model_SLN %>% compile(loss="categorical_crossentropy",
+                             optimizer=optimizer_rmsprop(), 
+                             metrics=c("accuracy")
+                             )
+
+```
+
+
+
+```{r warning = FALSE, message = FALSE}
+
+system.time(
+  history <- model_SLN %>%
+      fit(x_train, 
+          yc_train, 
+          epochs = 100, 
+          batch_size = 128,
+          validation_data= list(x_test, yc_test)
+          )
+)
+plot(history, smooth = FALSE)
+
+```
+
+
+
+```{r warning = FALSE, message = FALSE}
+
+y_pred_prob = model_SLN %>% predict(x_test)
+y_pred <- apply(y_pred_prob, 1, which.max) - 1
+
+CFM_SLN <- table(y_test, y_pred)
+CFM_SLN
+
+acc <- sum(diag(CFM_SLN)) / sum(CFM_SLN)
+acc
+
+```
+
+
+# Multi-layer Network 
+
+```{r warning = FALSE, message = FALSE}
+
+
+model_MLN <- keras_model_sequential() %>%
+      layer_dense(units = 32,
+                input_shape = ncol(x_test),
+                activation = "tanh",
+                name = "Hidden1"
+                ) %>%
+  
+      layer_dropout(rate=0.3) %>%
+  
+    layer_dense(units = 16,
+                  activation = "tanh",
+                  name = "Hidden2"
+                  ) %>%
+  
+    layer_dropout(rate=0.2) %>%
+  
+      layer_dense(units = 8,
+                  activation = "tanh",
+                  name = "Hidden3") %>%
+  
+      layer_dense(units = 2,
+                  activation = "softmax",
+                  name = "Output"
+                  )
+
+summary(model_MLN)
+
+
+
+model_MLN %>% compile(loss="categorical_crossentropy",
+                             optimizer=optimizer_rmsprop(), 
+                             metrics=c("accuracy")
+                             )
+
+
+
+```
+
+
+
+
+```{r warning = FALSE, message = FALSE}
+
+system.time(
+  history <- model_MLN %>%
+      fit(x_train, 
+          yc_train, 
+          epochs = 150, 
+          batch_size = 128,
+          validation_data= list(x_test, yc_test)
+          )
+)
+plot(history, smooth = FALSE)
+
+
+
+```
+
+
+```{r warning = FALSE, message = FALSE}
+
+y_pred_prob = model_MLN %>% predict(x_test)
+y_pred <- apply(y_pred_prob, 1, which.max) - 1
+
+CFM_MLN <- table(y_test, y_pred)
+CFM_MLN
+
+acc <- sum(diag(CFM_MLN)) / sum(CFM_MLN)
+acc
+
+
+```
+
+
+# Part 3. Another multi-layer network 
+
+16 * 24 = 384  \
+25 * 12 = 300 \
+13 * 6 = 78\
+
+384 + 300 + 78 = 762  \
+
+
+
+
+

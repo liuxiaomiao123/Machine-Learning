@@ -1,0 +1,214 @@
+---
+title: "Assignment5"
+author: "Liangying Liu"
+date: "2024-03-10"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+# Part 1. Hierarchical Clustering (40 pts)
+
+An important application of clustering is the segmentation of customers in groups. For example, a promotional campaign offering discounts might want to target only customers who previously purchased a product and have not been back in some time. It starts with knowing who your customers are and clustering analysis of customer data is a common exploratory step.
+The file customers.csv contains 200 records on customers of a shopping mall. The information available is their age, income (annual, in $000), and a spending score between 0 and 100. The spending score was assigned by the mall based on spending habit and customer behavior. A higher spending score reflects a greater propensity to make a purchase at the mall.
+The figure below shows scatter plots of the three variables (not yet centered or scaled). Trends are not particularly visible in the data, however, there seems to be some grouping of the observations based on income and spending score. We will use hierarchical clustering to see if we can learn more about the customer patterns.
+
+
+## 1.1	Analysis (20 pts)
+
+Perform hierarchical clustering using the Age, Income, and SpendScore information, complete linkage and dissimilarity based on Pearson correlations.
+
+
+```{r warning = FALSE, message = FALSE}
+
+library(factoextra)
+library(tidyverse)
+library(dynamicTreeCut)
+library(class)
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/customers.csv")
+df_f = data %>% select(-CustomerID)
+
+df_f = scale(df_f)
+
+hc <- hclust(get_dist(df_f,method = "pearson"),method = "complete")
+#hc$merge
+```
+
+
+## 1.1.1	Which customer is first merged with another pair of customers?
+
+customer 7 is first merged with the pair of customer 25 and customer 80.
+
+## 1.1.2	The first time two groups of two or more customers are merged, which customers end up in the combined group?
+
+group(customer 9, customer 90) and group(customer 7, customer 25, customer 80).
+
+## 1.2	Dendrogram and Cut (10 pts)
+
+Plot the dendrogram of the hierarchical cluster analysis and decide on a reasonable number of clusters; that is, chose how to cut the dendrogram.
+
+```{r warning = FALSE, message = FALSE}
+
+# plot(hc, cex=0.5)
+# diClusts = cutreeDynamic(hc)
+# table(diClusts)
+
+# plot(data$Income, data$SpendScore, pch = 20, col = diClusts, xlab = "Income", ylab = "Spending Score")
+
+plot(hc, cex=0.5)
+rect.hclust(hc,k=5)
+clusters <- dendextend::cutree(hc,k = 5)
+table(clusters)
+
+```
+
+## 1.3	Plot (10 pts)
+
+Using the chosen number of clusters, plot spending score (y-axis) versus income (x-axis) and show the cluster assignment.
+Which customer segments would you target in a marketing campaign aimed at increasing mall revenue?
+
+```{r warning = FALSE, message = FALSE}
+
+plot(data$Income, data$SpendScore, pch = 20, col = clusters, xlab = "Income", ylab = "Spending Score")
+legend("topright", legend = unique(clusters), col = 1:length(clusters), pch = 20, title = "Cluster")
+
+cat("customers ID in cluster 1: ",which(clusters == 1), "\n",
+    "customers ID in cluster 4: ",which(clusters == 4), "\n")
+
+```
+
+I would target at customer segments with higher spending scores, i.e., cluster 1 and cluster 4.
+
+
+# Part 2. Bagging (40 pts)
+
+This part uses a slightly modified version of the credit default data set from ISLR2. The only change is that the variables for credit default and student status are numeric variables and not factors. The file credit_defaults.csv contains simulated information on credit defaults of 10,000 customers. The variables are
+•	is_default: 1 if the customer defaulted on their debt, 0 otherwise
+•	is_student: 1 if the customer is a student, 0 otherwise
+•	balance: the average credit card account balance
+•	income: the income
+We want to develop a model to classify new customers as defaulting/not defaulting on their credit card debt based on account balance, income, and student status.
+A possible model that comes to mind is a logistic regression model that predicts the probability of default and classifies a customer as defaulting if the predicted probability exceeds some threshold, say 0.5.
+
+
+## 2.2	Logistic Regression (10 pts)
+
+Fit the logistic regression model and classify whether a student with account balance of $2,100 and an income of $25,000 would be labeled as a defaulter. Report the predicted probability of default as well as the predicted category.
+
+```{r warning = FALSE, message = FALSE}
+
+d = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/credit_default.csv")
+
+model <- glm(is_default ~ ., data = d, family = binomial(link='logit'))
+summary(model)
+
+new_customer <- data.frame(balance = 2100, income = 25000, is_student = 1)
+
+prob_default <- predict(model, newdata = new_customer, type = "response")
+
+predicted_category <- ifelse(prob_default > 0.5, "Defaulter", "Not Defaulter")
+
+cat("Predicted Probability of Default:", prob_default, "\n",
+    "Predicted Category:", predicted_category, "\n")
+
+```
+
+## 2.3	K-Nearest Neighbor (30 pts)
+
+An alternative way to classify observations is to use a K-nearest neighbor method. The classification rule simply looks at the observed default status of the 𝑘 nearest observations and assigns the category shared by the majority of those. For example, if in a 5-nearest neighbor analysis the 5 closest observations have is_default values of 1, 0, 0, 0, 1, then the method classifies the observation as no default (more 0s than 1s).
+
+
+## 2.3.1	Use K-NN to classify
+
+Classify the credit default status of the student with $2,100 account balance and $25,000 income using a 𝑘 = 3 nearest neighbor classifier.
+Note: you can use class::knn() or Rfast::knn(…,type="C") for this.
+
+```{r warning = FALSE, message = FALSE}
+
+
+d_s = d %>% select(-c(is_student, is_default)) %>% scale()
+d_s = cbind(d_s, d[, 3:4])
+
+mean_balance = mean(d$balance)
+std_balance = sd(d$balance)
+
+mean_income = mean(d$income)
+std_income = sd(d$income)
+
+new_customer_s = data.frame(balance = (2100 - mean_balance) / std_balance, 
+                            income = (25000 - mean_income) / std_income, is_student = 1)
+
+knn_pred <- knn(
+  train = d[, 1:3], 
+  test = new_customer_s,
+  cl = d_s$is_default, 
+  k = 3
+)
+
+cat("K-NN Prediction:", ifelse(as.numeric(levels(knn_pred))[knn_pred] == 1, "Defaulter", "Not Defaulter"), "\n")
+
+```
+
+## 2.3.2	Bagging of K-Nearest Neighbor
+
+The K-NN estimator is a weak learner with high variability, especially when 𝑘 is small. Use bagging of the 3-NN estimator to derive a more reliable estimate of the probability that the student with $2,100 account balance and $25,000 income will default on their credit card debt.
+Report the bagged predicted probability and the bagged predicted category.
+Note: You might have to write a function in R to do this.
+
+```{r warning = FALSE, message = FALSE}
+
+knn_bagging <- function(data, test, k, B)
+{
+  predictions = numeric(B)
+  for (i in 1:B)
+  {
+    sample_index = sample(nrow(data), replace = TRUE)
+    samples = data[sample_index,]
+    pred = knn(
+      train = samples[, 1:3], 
+      test = test,
+      cl = samples$is_default, 
+      k = k
+    )
+    predictions[i] = as.numeric(levels(pred))[pred]
+  }
+  pred_prob = mean(predictions)
+  return(pred_prob)
+}
+
+k = 3
+B = 10000
+pred_bagging_prob = knn_bagging(d_s, new_customer_s, k, B)
+predicted_category <- ifelse(pred_bagging_prob > 0.5, "Defaulter", "Not Defaulter")
+
+cat("Predicted Probability of Default:", pred_bagging_prob, "\n",
+    "Predicted Category:", predicted_category, "\n")
+
+B = 50000
+pred_bagging_prob = knn_bagging(d_s, new_customer_s, k, B)
+predicted_category <- ifelse(pred_bagging_prob > 0.5, "Defaulter", "Not Defaulter")
+
+cat("Predicted Probability of Default:", pred_bagging_prob, "\n",
+    "Predicted Category:", predicted_category, "\n")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

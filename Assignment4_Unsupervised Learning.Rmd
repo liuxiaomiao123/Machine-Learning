@@ -1,0 +1,420 @@
+---
+title: "Assignment4"
+author: "Liangying Liu"
+date: "2024-02-20"
+output:
+  pdf_document :
+      latex_engine : xelatex
+  word_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 200
+---
+
+
+Read and Transform the Data
+The data in nndb.csv are not yet transformed. Extract the numerical variables and apply the Box- Cox transformation
+to all numerical variables. We are using the transformed variables in what follows.
+
+```{r warning = FALSE, message = FALSE}
+
+library(MASS)
+library(tidyverse)
+
+data = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/nndb.csv")
+
+
+data_t = lapply(data[, -(1:3)], 
+                function(c)
+                {
+                  (c ^ 0.25 - 1) / 0.25
+                })
+
+data_t = as.data.frame(data_t)
+data_t = cbind(data[, 1:3], data_t)
+
+```
+
+# Part 1. Principal Component Analysis (50 pts)
+
+## 1.2 Compute the PCA (10 pts)
+
+Compute the principal component analysis for the 23 nutrients using centering and scaling in the PCA.
+
+```{r warning = FALSE, message = FALSE}
+
+pca_results <- prcomp(data_t[, -(1:3)], center = TRUE, scale. = TRUE)
+
+```
+
+## 1.2	Scree Plot (5 pts)
+
+Produce a scree plot of the proportion of variance explained by the principal components (PC).
+
+```{r warning = FALSE, message = FALSE}
+
+pc <- summary(pca_results)
+
+plot(pc$importance[2,],
+     type="b",
+     main="Scree Plot",
+     ylab="Proportion of Variance Explained",
+     xlab="Principal Component",
+     axes = FALSE
+     #xlim=c(1,23)
+    # xaxp=c(1,24,3)
+     #las=1
+)
+x_ticks <- seq(1, 23, by = 2)
+y_ticks <- seq(0, 0.4, by = 0.1)
+axis(side = 1, at = x_ticks)
+axis(side = 2, at = y_ticks)
+
+```
+
+
+## 1.3	Loadings (Rotation) (10 pts)
+
+Interpret the loadings (rotation) of the first three principal components.
+•	Are they high or low in particular nutrients?
+•	What kind of foods do you think are associated with high or low scores for these principal components?
+
+```{r warning = FALSE, message = FALSE}
+
+pc3 = as.data.frame(pc$rotation[, 1:3])
+
+p1_sorted = pc3[order((pc3$PC1), decreasing = TRUE),]
+p1_sorted = subset(p1_sorted, select = PC1)  # save the rownames by using subset instead of $ or []
+
+p2_sorted = pc3[order((pc3$PC2), decreasing = TRUE), ]
+p2_sorted = subset(p2_sorted, select = PC2)  # save the rownames by using subset instead of $ or []
+
+p3_sorted = pc3[order((pc3$PC3), decreasing = TRUE), ]
+p3_sorted = subset(p3_sorted, select = PC3)  # save the rownames by using subset instead of $ or []
+
+
+
+cat(" PC1 is high in ", 
+    rownames(head(p1_sorted, 3)), '\n',
+    "PC1 is low in ", 
+    rownames(tail(p1_sorted, 3)), '\n',
+    '\n',
+    "PC2 is high in ", 
+    rownames(head(p2_sorted, 3)), '\n',
+    "PC2 is low in ", 
+    rownames(tail(p2_sorted, 3)), '\n',
+    '\n',
+    "PC3 is high in ", 
+    rownames(head(p3_sorted, 3)), '\n',
+    "PC3 is low in ", 
+    rownames(tail(p3_sorted, 3)), '\n'
+    )
+
+
+
+p11_h = rownames(head(p1_sorted, 3))[1]
+p12_h = rownames(head(p1_sorted, 3))[2]
+p13_h = rownames(head(p1_sorted, 3))[3]
+
+p11_l = rownames(tail(p1_sorted, 3))[1]
+p12_l = rownames(tail(p1_sorted, 3))[2]
+p13_l = rownames(tail(p1_sorted, 3))[3]
+
+p21_h = rownames(head(p2_sorted, 3))[1]
+p22_h = rownames(head(p2_sorted, 3))[2]
+p23_h = rownames(head(p2_sorted, 3))[3]
+
+p21_l = rownames(tail(p1_sorted, 3))[1]
+p22_l = rownames(tail(p1_sorted, 3))[2]
+p23_l = rownames(tail(p1_sorted, 3))[3]
+
+p31_h = rownames(head(p3_sorted, 3))[1]
+p32_h = rownames(head(p3_sorted, 3))[2]
+p33_h = rownames(head(p3_sorted, 3))[3]
+
+p31_l = rownames(tail(p1_sorted, 3))[1]
+p32_l = rownames(tail(p1_sorted, 3))[2]
+p33_l = rownames(tail(p1_sorted, 3))[3]
+
+
+
+cat("foods potentially associated with high scores for PC1:", '\n', 
+    data_t[order(data_t[[p11_h]], decreasing = TRUE)[1], 3], 
+    data_t[order(data_t[[p12_h]], decreasing = TRUE)[1], 3],
+    data_t[order(data_t[[p13_h]], decreasing = TRUE)[1], 3], '\n',
+    "foods potentially associated with low scores for PC1", '\n', 
+    data_t[order(data_t[[p11_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p12_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p13_l]], decreasing = FALSE)[1], 3], '\n',
+    '\n',
+    "foods potentially associated with high scores for PC2", '\n', 
+    data_t[order(data_t[[p21_h]], decreasing = TRUE)[1], 3],
+    data_t[order(data_t[[p22_h]], decreasing = TRUE)[1], 3],
+    data_t[order(data_t[[p23_h]], decreasing = TRUE)[1], 3], '\n',
+    "foods potentially associated with low scores for PC2", '\n', 
+    data_t[order(data_t[[p21_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p22_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p23_l]], decreasing = FALSE)[1], 3], '\n',
+    '\n',
+    "foods potentially associated with high scores for PC3", '\n', 
+    data_t[order(data_t[[p31_h]], decreasing = TRUE)[1], 3],
+    data_t[order(data_t[[p32_h]], decreasing = TRUE)[1], 3],
+    data_t[order(data_t[[p33_h]], decreasing = TRUE)[1], 3], '\n',
+    "foods potentially associated with low scores for PC3", '\n', 
+    data_t[order(data_t[[p31_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p32_l]], decreasing = FALSE)[1], 3],
+    data_t[order(data_t[[p33_l]], decreasing = FALSE)[1], 3], 
+    '\n'
+)
+
+
+
+pc_scores = pca_results$x
+pc_scores = cbind(data[, 1:3], pc_scores)
+
+pc1_scores_top3 = order(pc_scores$PC1, decreasing = TRUE)[1:3]
+pc1_scores_tail3 = order(pc_scores$PC1, decreasing = FALSE)[1:3]
+
+pc2_scores_top3 = order(pc_scores$PC2, decreasing = TRUE)[1:3]
+pc2_scores_tail3 = order(pc_scores$PC2, decreasing = FALSE)[1:3]
+
+pc3_scores_top3 = order(pc_scores$PC3, decreasing = TRUE)[1:3]
+pc3_scores_tail3 = order(pc_scores$PC3, decreasing = FALSE)[1:3]
+
+
+cat("foods associated with high scores for PC1:", '\n', 
+    pc_scores[pc1_scores_top3, 3], '\n',
+    "foods associated with low scores for PC1", '\n', 
+    pc_scores[pc1_scores_tail3, 3], '\n',
+    '\n',
+    "foods associated with high scores for PC2", '\n', 
+    pc_scores[pc2_scores_top3, 3], '\n',
+    "foods associated with low scores for PC2", '\n', 
+    pc_scores[pc2_scores_tail3, 3], '\n',
+    '\n',
+    "foods associated with high scores for PC3", '\n', 
+    pc_scores[pc3_scores_top3, 3], '\n',
+    "foods associated with low scores for PC3", '\n', 
+    pc_scores[pc3_scores_tail3, 3], '\n'
+)
+
+```
+ 
+Hi Dr.Schabenberger, I understand that your meaning is to find foods with high/low nutrients that are also high/low in component. Since the score is a linear combination of all nutrients, food may not have high nutrients that are high in PC, but they may have tremedous nutrients that are low in PC. Consequently, the overall score would still be high. 
+
+
+## 1.4	Biplot (10 pts)
+
+Produce the biplot for the first two components. The PC scores appear as points on the plot and the loadings are superimposed as arrows.
+•	Interpret the biplot. For example, you might ask yourself which groups of nutrients are highly correlated and seem to appear together. Does that match your interpretation of the loadings in 1.2.2?
+
+
+```{r warning = FALSE, message = FALSE}
+
+biplot(pca_results,cex=0.6,lwd=2,
+       col = c("grey", "red"),
+       main="Biplot for first two principle components")
+
+```
+
+Sugar_g, Carb_g, VitC_mg and Fiber_g have sttong positive correlations because they have small degrees between two vectors.
+They also dominate the PC1 because their projection on the PC1 axis are large. However, they are low in the PC2 because their 
+projection on the PC2 axis are small.
+
+Similarly, VitB12_mcg, Protein_g and Selenium_mcg have positive correlations and they dominate the PC2.
+Niacin_mg, Zinc_mg and Phosphorus_mg are low in PC1 because their projection on the PC1 axis are small.
+
+The results match the previous loadings because the loadings are visulazied by these vectors.
+
+
+## 1.5	Food Group Analysis (15 pts)
+
+In this part you match the PC scores with the FoodGroup variable.
+•	What characterizes the foods with low scores (≤ −0.01) for the first and second PC?
+•	What characterizes the foods with negative scores (< 0) for PC1 and positive scores (> 0) for PC2?
+•	Which food groups appear most frequently with high/low scores for the third component?
+
+```{r warning = FALSE, message = FALSE}
+
+cat("the foods with low scores (≤ −0.01) for the first and second PC:", '\n') 
+     sort(table(pc_scores[(pc_scores$PC1 <= -0.01) & (pc_scores$PC2 <= -0.01), 'FoodGroup']), decreasing = TRUE)
+     
+cat("the foods with negative scores (< 0) for PC1 and positive scores (> 0) for PC2:", '\n')
+     sort(table(pc_scores[(pc_scores$PC1 < 0) & (pc_scores$PC2 > 0), 'FoodGroup']), decreasing = TRUE)
+
+
+pc3_scores_top3 = order(pc_scores$PC3, decreasing = TRUE)[1:3]
+pc3_scores_tail3 = order(pc_scores$PC3, decreasing = FALSE)[1:3]
+
+
+cat(" foods with high scores for the thrid PC:", '\n',
+    pc_scores[pc3_scores_top3, 'FoodGroup'], '\n',
+    '\n',
+    "foods with low scores for the thrid PC:", '\n',
+    unique(pc_scores[pc3_scores_tail3, 'FoodGroup'])) 
+
+```
+
+
+# Part 2. K-Means Analysis (50 pts)
+
+A K-means analysis on all 23 variables might not be a great idea, due to the curse of dimensionality. However, we can combine PCA and K-Means analysis by running the K-Means analysis on the results of the PCA.
+
+## 2.1	Basic Questions (5 pts)
+
+•	If you run K-Means on the first two principal components, how many nutrients participate in the analysis?
+•	Given what you know of the data, and without running any K-means analysis, what is the largest number you would possibly for 𝑘?
+
+all 23 nutrients will participate in the analysis.
+8618, i.e., every data point is a cluster.
+
+
+## 2.2	Perform K-means analysis with 𝑘 = 3 (10 pts)
+
+Perform K-means with 𝑘 = 3 on the principal components of the nutrition data. Include enough principal components to capture 2/3 of the variability in the nutrient data. Based on this analysis, answer the following questions:
+•	How many observations are in the second cluster?
+•	What proportion of the total variability in the four principal components is attributed to differences between the clusters?
+
+```{r warning = FALSE, message = FALSE}
+
+plot(pc$importance[3,], type = "b", pch = 16, col = "grey", lty = 1, xlab = "PC", ylab = "Cumulative Proportion")
+abline(h = 2/3, col = "red")
+
+km_pca <- kmeans(pca_results$x[, 1:4], centers = 3, nstart = 20)
+
+cat(sum(km_pca$cluster == 2), "observations are in the second cluster", '\n',
+    km_pca$betweenss / km_pca$totss, "in the four principal components is attributed to differences between the clusters")
+
+```
+
+
+## 2.3	Determine an appropriate value for 𝑘 (15 pts)
+
+Compute within-cluster sum of squares for different values of 𝑘 and produce a scree plot of the within-cluster sum of squares versus 𝑘.
+Which value of 𝑘 do you choose for the final K-means analysis and why?
+
+```{r warning = FALSE, message = FALSE}
+
+library(cluster)
+
+set.seed(4546)
+n_clusters <- 10
+WSS <- numeric(n_clusters)
+SL <- numeric(n_clusters)
+
+for (i in 1:n_clusters) 
+{
+  km <- kmeans(pca_results$x[, 1:4], centers = i, nstart = 20, iter.max=30)
+  WSS[i] <- km$tot.withinss
+  
+  if (i > 1)
+  {
+    sl <- silhouette(km$cluster, dist(pca_results$x[, 1:4]))
+    SL[i] <- mean(sl[, 3])
+  }
+}
+
+#-----------Elbow Method--------------
+plot(seq(1,10,1),WSS,type = "b",lwd = 2,las = 1,
+     main = "Elbow Method",
+     xlab = "K",
+     ylab = "Within-cluster Sum of Squares"
+     )
+par(cex.axis = 0.8) 
+for (i in 1:n_clusters) 
+{
+  abline(h = WSS[i],lty = "dotted",lwd = 1)
+}
+
+#-----------Silhouette Method--------------
+plot(seq(1,10,1),SL,type = "b",lwd = 2,las = 1,
+     main = "Silhouette Method",
+     xlab = "K",
+     ylab = "Silhouette score"
+)
+abline(v = 5, col = "red")
+
+which(SL == max(SL))
+
+```
+
+Based on both elbow method and Silhouette method, the optimal k is 5.
+
+## 2.4.	Perform the final K-means analysis (20 pts)
+
+For the remainder of the analysis, you are using the value of 𝑘 chosen in 2.3.
+
+## 2.4.1	Overlay
+Produce a scatter plot of the first two principal components where points are labeled or colored by the K-means cluster number.
+
+```{r warning = FALSE, message = FALSE}
+
+set.seed(1234)
+km_final <- kmeans(pca_results$x[, 1:4], centers = 5, nstart = 20, iter.max=30)
+cluster_id <- factor(km_final$cluster)
+
+
+plot(pc_scores$PC1,
+     pc_scores$PC2,
+     type="p",
+     col=cluster_id,
+     cex=0.5,
+     main="5-means clustering",
+     xlab="PC1",
+     ylab="PC2"
+     )
+legend("topright", legend = 1:length(unique(cluster_id)), col = 1:length(unique(cluster_id)), pch = 19, title = "Cluster")
+
+```
+
+## 2.4.2	Food Group Analysis
+Which food groups characterize (dominate) the K-means clusters?
+
+
+```{r warning = FALSE, message = FALSE}
+
+tb = table(pc_scores[, 1], km_final$cluster)
+tb
+cat("the following groups dominate each cluster:")
+
+rownames(tb)[apply(tb, 2, which.max)]
+
+```
+
+
+
+## 2.4.3	My Special Designer Food
+I am designing a special food that provides me with essential nutrients and protein but is also tasty (fats, sugar) and makes me happy (carbs). I call my special recipe "sugar-glazed cheesy beef cake vegetables--with pasta and some fruit".
+You can find the nutrient composition in file specialfood.csv.
+ 
+Which cluster does the special food belong to in your final K-means analysis? Make sure to show how you compute that.
+
+
+```{r warning = FALSE, message = FALSE}
+
+food = read.csv(file="C:/Users/liangyingliu/OneDrive - Virginia Tech/Data analytics II/specialfood.csv")
+
+clusters <- function(x, centers) {
+  # compute squared euclidean distance from 
+  # each sample to each cluster center
+  tmp <- sapply(seq_len(nrow(x)),
+                function(i) apply(centers, 1,
+                                  function(v) sum((x[i, ]-v)^2)))
+  print(tmp)
+  max.col(-t(tmp))  # find index of min distance
+}
+
+pred_cluster <- clusters(food,km_final[["centers"]])
+pred_cluster
+
+```
+
+
+
+
+
+
+
+
+
